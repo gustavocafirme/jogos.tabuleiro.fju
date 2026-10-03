@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Ranking com Elo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
+  <style>
+    :root { 
+      --bg: #090e17; 
+      --card: #131c2e; 
+      --card-border: #1e2c48;
+      --primary: #2563eb; 
+      --primary-hover: #1d4ed8;
+      --text: #f1f5f9; 
+      --muted: #94a3b8; 
+      --danger: #dc2626; 
+      --danger-hover: #b91c1c;
+      --success: #16a34a;
+      --accent-red: #f60c0d;
+    }
+    
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+    
+    /* Imagem do Login */
+    .login-logo {
+      display: block;
+      margin: 0 auto 12px auto;
+      max-height: 120px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    /* Imagem de Fundo (Pós-login) */
+    .bg-esportes-logo {
+      position: fixed;
+      top: 55%;
+      right: -20px;
+	  transform: translate(0%, -50%);
+      height: 546px;
+      width: auto;
+      pointer-events: none;
+      z-index: 0;
+      -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.01), rgba(0, 0, 0, 0.6));
+      mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.01), rgba(0, 0, 0, 0.6));
+    }
+
+    /* Container e Imagem do Header / Logado (Centralizada independentemente do usuário) */
+    .header-container {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+      min-height: 50px;
+      z-index: 1;
+    }
+
+    .header-logo {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      max-height: 64px;
+      width: auto;
+      object-fit: contain;
+      pointer-events: none;
+    }
+
+    /* Cabeçalho do Usuário */
+    .header-user-info { display: flex; align-items: center; gap: 12px; margin-bottom: -8px; z-index: 2; }
+    .header-actions { z-index: 2; }
+    
+    .btn-refresh { background: #1b2845; border: 1px solid var(--card-border); color: var(--text); width: auto; padding: 6px 12px; margin: 0; cursor: pointer; border-radius: 6px; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; transition: background 0.2s; }
+    .btn-refresh:hover { border-color: var(--primary); background: #223354; color: #fff; }
+
+    /* Limite máximo de largura de 1000px para o conteúdo da aplicação */
+    .main-container { max-width: 1000px; margin: 0 auto; width: 100%; box-sizing: border-box; position: relative; z-index: 1; }
+
+    /* Abas Principais (Modalidades) */
+    .tabs-modalidades { display: flex; flex-direction: row; gap: 8px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap; }
+    .tab-btn { flex: 1; min-width: 90px; text-align: center; background: var(--card); border: 1px solid var(--card-border); color: var(--muted); padding: 12px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; white-space: nowrap; transition: all 0.2s; }
+    .tab-btn:hover { color: var(--text); border-color: var(--primary); }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+    
+    /* Sub-abas de Seções */
+    .tabs-secoes { display: flex; flex-direction: row; gap: 8px; justify-content: center; border-bottom: 1px solid var(--card-border); padding-bottom: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .subtab-btn { flex: 1; text-align: center; background: var(--card); border: 1px solid var(--card-border); color: var(--muted); padding: 10px 14px; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; transition: all 0.2s; }
+    .subtab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+    .subtab-btn:hover { color: var(--text); border-color: var(--primary); }
+
+    .section { background: var(--card); padding: 24px; border-radius: 12px; border: 1px solid var(--card-border); margin-bottom: 20px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.25); z-index: 1; }
+    
+    /* Detalhe sutil em vermelho na borda superior das seções */
+    .section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 20px;
+      right: 20px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+      opacity: 0.7;
+      border-radius: 2px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--card-border); font-size: 0.9rem; }
+    th { color: var(--primary); font-weight: 600; }
+    
+    /* Apenas as células de informação ficam dimmed se tiver 0 partidas */
+    tr.grayed-out td:not(.admin-only) { opacity: 0.4; filter: grayscale(100%); }
+    
+    /* Tabela de ranking antiga grayed out por completo */
+    table.grayed-out-full { opacity: 0.4; filter: grayscale(100%); pointer-events: none; }
+
+    /* Estado desabilitado durante envio / carregamento */
+    .form-disabled { opacity: 0.4; pointer-events: none; filter: grayscale(100%); }
+
+    input, select, button { width: 100%; padding: 11px 14px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--card-border); background: #0b111e; color: #fff; box-sizing: border-box; font-size: 0.95rem; transition: border-color 0.2s; }
+    input:focus, select:focus { outline: none; border-color: var(--primary); }
+    
+    button.submit-btn { background: var(--primary); border: none; font-weight: bold; cursor: pointer; margin-top: 18px; transition: background 0.2s; }
+    button.submit-btn:hover { background: var(--primary-hover); }
+    
+    button.btn-viewer { background: #1b2845; border: 1px solid var(--card-border); font-weight: bold; cursor: pointer; margin-top: 8px; color: var(--muted); }
+    button.btn-viewer:hover { color: #fff; border-color: var(--primary); background: #223354; }
+    
+    button.btn-danger { background: var(--danger); border: none; color: #fff; cursor: pointer; width: auto; padding: 6px 12px; margin: 0; opacity: 1 !important; filter: none !important; border-radius: 6px; font-weight: 600; transition: background 0.2s; }
+    button.btn-danger:hover { background: var(--danger-hover); }
+    
+    button.btn-restore { background: var(--success); border: none; color: #fff; cursor: pointer; width: auto; padding: 6px 12px; margin: 0; border-radius: 6px; font-weight: 600; transition: background 0.2s; }
+    button.btn-restore:hover { background: #15803d; }
+    
+    .hidden { display: none !important; }
+    .checkbox-container { display: flex; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; user-select: none; }
+    .checkbox-container input { width: auto; margin: 0; cursor: pointer; accent-color: var(--primary); }
+    
+    .divider { text-align: center; margin: 20px 0; color: var(--muted); font-size: 0.9rem; border-bottom: 1px solid var(--card-border); line-height: 0.1em; }
+    .divider span { background: var(--card); padding: 0 10px; }
+    
+    .loading-text { color: var(--muted); font-style: italic; text-align: center; padding: 20px; }
+    .loading-tag { color: var(--muted); font-weight: normal; font-style: italic; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <!-- TELA DE LOGIN -->
+  <div id="loginScreen" class="section" style="max-width: 400px; margin: 60px auto;">
+    <img src="fju_logo.png" alt="FJU Logo" class="login-logo">
+    <h2 style="margin-top: 0; color: var(--primary); text-align: center;">🔐 Acesso ao Sistema</h2>
+    <input type="text" id="loginUser" placeholder="Usuário" onkeypress="handleEnter(event)">
+    <input type="password" id="loginPass" placeholder="Senha" onkeypress="handleEnter(event)">
+    <label class="checkbox-container">
+      <input type="checkbox" id="rememberMe"> Permanecer logado?
+    </label>
+    <button class="submit-btn" id="btnLogin" onclick="login()">Entrar</button>
+
+    <div class="divider"><span>ou</span></div>
+    
+    <button class="btn-viewer" onclick="loginAsViewer()">👀 Entrar como Visualizador</button>
+  </div>
+
+  <!-- APLICAÇÃO PRINCIPAL -->
+  <div id="appScreen" class="hidden" style="position: relative; min-height: calc(100vh - 30px); overflow: hidden;">
+    
+    <!-- Imagem de Fundo Pós-login -->
+    <img src="fju_esportes_logo.png" alt="FJU Esportes Logo" class="bg-esportes-logo">
+
+    <!-- Cabeçalho com Logo Centralizada Absoluta -->
+    <div class="header-container">
+      <div class="header-user-info">
+        <div>
+          <span id="userDisplay" style="font-weight: bold; font-size: 1.05rem;"></span> 
+          <small id="roleDisplay" style="color: var(--primary); margin-left: 4px; font-weight: 600;"></small>
+        </div>
+        <button id="btnRefresh" class="btn-refresh" onclick="loadData()">🔄 Atualizar</button>
+      </div>
+      
+      <img src="fju_logo_128.png" alt="FJU Header Logo" class="header-logo">
+
+      <div class="header-actions">
+        <button onclick="logout()" style="width: auto; padding: 6px 14px; background: #1b2845; border: 1px solid var(--card-border); color: var(--text); border-radius: 6px; cursor: pointer; transition: background 0.2s;">Sair</button>
+      </div>
+    </div>
+
+    <!-- CONTAINER PRINCIPAL -->
+    <div class="main-container">
+      
+      <!-- Abas Principais (Modalidades) -->
+      <div class="tabs-modalidades" id="tabsModalidades">
+        <button class="tab-btn active" onclick="switchMod('Xadrez')">Xadrez</button>
+        <button class="tab-btn" onclick="switchMod('Damas')">Damas</button>
+        <button class="tab-btn" onclick="switchMod('Domino')">Dominó</button>
+        <button class="tab-btn" onclick="switchMod('Uno')">Uno</button>
+      </div>
+
+      <!-- Sub-abas das Seções -->
+      <div class="tabs-secoes">
+        <button class="subtab-btn active" id="subtab-ranking" onclick="switchSection('ranking')">📊 Ranking</button>
+        <button class="subtab-btn role-auxiliar role-subadmin role-admin" id="subtab-registrar" onclick="switchSection('registrar')">⚔️ Registrar Partida</button>
+        <button class="subtab-btn role-subadmin role-admin" id="subtab-adicionar" onclick="switchSection('adicionar')">➕ Adicionar Jogador</button>
+        <button class="subtab-btn role-admin" id="subtab-backup" onclick="switchSection('backup')">🗑 Jogadores Excluídos</button>
+        <button class="subtab-btn role-admin" id="subtab-historico" onclick="switchSection('historico')">📜 Histórico</button>
+      </div>
+
+      <!-- CONTEÚDO DAS SEÇÕES -->
+      
+      <!-- 1. RANKING -->
+      <div id="sec-ranking" class="section">
+        <h2 style="margin-top:0;"><span class="modTitle">Xadrez</span><small id="rankingLoadingTag" class="loading-tag hidden"> (Carregando...)</small></h2>
+        <table id="rankingTable">
+          <thead>
+            <tr><th>#</th><th>Nome</th><th>Pontuação (Elo)</th><th>Partidas</th><th class="admin-only">Ações</th></tr>
+          </thead>
+          <tbody id="rankingTableBody">
+            <tr><td colspan="5" class="loading-text">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 2. REGISTRAR PARTIDA -->
+      <div id="sec-registrar" class="section role-auxiliar role-subadmin role-admin hidden">
+        <h3 style="margin-top:0;">⚔️ Registrar Partida - <span class="modTitle">Xadrez</span><small id="registrarLoadingTag" class="loading-tag hidden"> (Carregando...)</small></h3>
+        <div id="matchForm"><p class="loading-text">Carregando...</p></div>
+        <button class="submit-btn" id="btnSubmitMatch" onclick="submitMatch()">Registrar Resultado</button>
+      </div>
+
+      <!-- 3. ADICIONAR JOGADOR -->
+      <div id="sec-adicionar" class="section role-subadmin role-admin hidden">
+        <h3 style="margin-top:0;">➕ Adicionar Jogador - <span class="modTitle">Xadrez</span><small id="adicionarLoadingTag" class="loading-tag hidden"> (Carregando...)</small></h3>
+        <div id="adicionarContainer">
+          <input type="text" id="newPlayerName" placeholder="Nome do Jogador">
+          <button class="submit-btn" id="btnAddPlayer" onclick="addPlayer()">Salvar Jogador</button>
+        </div>
+      </div>
+
+      <!-- 4. BACKUP / LIXEIRA (Exclusivo Admin) -->
+      <div id="sec-backup" class="section role-admin hidden">
+        <h3 style="margin-top:0;">🗑 Jogadores Excluídos (Backup) - <span class="modTitle">Xadrez</span><small id="backupLoadingTag" class="loading-tag hidden"> (Carregando...)</small></h3>
+        <div id="backupContainer">
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>Pontuação</th><th>Partidas</th><th>Data Exclusão</th><th>Excluído Por</th><th>Ações</th></tr>
+            </thead>
+            <tbody id="backupTableBody">
+              <tr><td colspan="6" class="loading-text">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5. HISTÓRICO (Exclusivo Admin) -->
+      <div id="sec-historico" class="section role-admin hidden">
+        <h3 style="margin-top:0;">📜 Histórico de Ações - <span class="modTitle">Xadrez</span><small id="historicoLoadingTag" class="loading-tag hidden"> (Carregando...)</small></h3>
+        <div id="historicoContainer">
+          <table>
+            <thead>
+              <tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Envolvidos</th><th>Detalhes</th></tr>
+            </thead>
+            <tbody id="historicoTableBody">
+              <tr><td colspan="5" class="loading-text">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbyvYdylsWuc0kjufyfrg9CB_pgf2LUUcNRss5gCmu50BeRi1ylv3pkR1WilvReHzWafuw/exec";
+
+    let currentUser = null;
+    let currentSessionToken = null;
+    let currentMod = 'Xadrez';
+    let currentSec = 'ranking';
+    let dbData = { rankings: {}, backups: {} };
+    let historyData = {};
+    let refreshTimeout = null;
+    let isFirstLoad = true;
+
+    window.onload = function() {
+      let savedToken = localStorage.getItem('app_session_token');
+      let savedUser = localStorage.getItem('app_session_user');
+
+      if (!savedToken) {
+        savedToken = sessionStorage.getItem('app_session_token');
+        savedUser = sessionStorage.getItem('app_session_user');
+      }
+
+      if (savedToken && savedUser) {
+        currentSessionToken = savedToken;
+        currentUser = JSON.parse(savedUser);
+        setupAppInterface();
+      }
+    };
+
+    function handleEnter(e) {
+      if (e.key === 'Enter') login();
+    }
+
+    async function login() {
+      const uVal = document.getElementById('loginUser').value.trim();
+      const pVal = document.getElementById('loginPass').value;
+      const remember = document.getElementById('rememberMe').checked;
+      const btnLogin = document.getElementById('btnLogin');
+
+      if (!uVal || !pVal) return alert('Informe o usuário e a senha!');
+
+      // Transiciona botão para Grayed Out e Desabilitado
+      const originalText = btnLogin.innerText;
+      btnLogin.innerText = "Entrando...";
+      btnLogin.disabled = true;
+      btnLogin.classList.add('form-disabled');
+
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'login',
+            username: uVal,
+            password: pVal,
+            remember: remember
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          currentUser = data.user;
+          currentSessionToken = data.token;
+
+          if (remember) {
+            localStorage.setItem('app_session_token', currentSessionToken);
+            localStorage.setItem('app_session_user', JSON.stringify(currentUser));
+          } else {
+            sessionStorage.setItem('app_session_token', currentSessionToken);
+            sessionStorage.setItem('app_session_user', JSON.stringify(currentUser));
+          }
+
+          setupAppInterface();
+        } else {
+          alert(data.message || 'Falha no login.');
+        }
+      } catch (err) {
+        console.error("Erro no login:", err);
+        alert("Erro de conexão ao tentar realizar o login.");
+      } finally {
+        // Restaura botão ao estado normal
+        btnLogin.innerText = originalText;
+        btnLogin.disabled = false;
+        btnLogin.classList.remove('form-disabled');
+      }
+    }
+
+    function loginAsViewer() {
+      currentUser = { username: "Visitante", role: "visualizador" };
+      currentSessionToken = null;
+      setupAppInterface();
+    }
+
+    function logout() {
+      localStorage.removeItem('app_session_token');
+      localStorage.removeItem('app_session_user');
+      sessionStorage.removeItem('app_session_token');
+      sessionStorage.removeItem('app_session_user');
+
+      currentUser = null;
+      currentSessionToken = null;
+      isFirstLoad = true;
+
+      document.getElementById('appScreen').classList.add('hidden');
+      document.getElementById('loginScreen').classList.remove('hidden');
+      document.getElementById('loginPass').value = '';
+      document.getElementById('loginUser').value = '';
+    }
+
+    function setupAppInterface() {
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('appScreen').classList.remove('hidden');
+      
+      document.getElementById('userDisplay').innerText = currentUser.username;
+      document.getElementById('roleDisplay').innerText = `(${currentUser.role})`;
+
+      const roles = ['admin', 'subadmin', 'auxiliar', 'visualizador'];
+      roles.forEach(r => {
+        document.querySelectorAll(`.role-${r}`).forEach(el => el.classList.add('hidden'));
+      });
+
+      if (currentUser.role === 'admin') {
+        document.querySelectorAll('.role-admin').forEach(el => el.classList.remove('hidden'));
+      } else if (currentUser.role === 'subadmin') {
+        document.querySelectorAll('.role-subadmin').forEach(el => el.classList.remove('hidden'));
+      } else if (currentUser.role === 'auxiliar') {
+        document.querySelectorAll('.role-auxiliar').forEach(el => el.classList.remove('hidden'));
+      }
+
+      document.querySelectorAll('.admin-only').forEach(el => {
+        if (currentUser.role !== 'admin') el.classList.add('hidden');
+        else el.classList.remove('hidden');
+      });
+
+      switchSection('ranking');
+      loadData();
+    }
+
+    async function loadData() {
+      const btnRefresh = document.getElementById('btnRefresh');
+      if (btnRefresh) btnRefresh.style.display = 'none';
+
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+
+      document.getElementById('registrarLoadingTag').classList.remove('hidden');
+      document.getElementById('sec-registrar').classList.add('form-disabled');
+
+      document.getElementById('adicionarLoadingTag').classList.remove('hidden');
+      document.getElementById('adicionarContainer').classList.add('form-disabled');
+
+      document.getElementById('backupLoadingTag').classList.remove('hidden');
+      document.getElementById('backupContainer').classList.add('form-disabled');
+
+      document.getElementById('historicoLoadingTag').classList.remove('hidden');
+      document.getElementById('historicoContainer').classList.add('form-disabled');
+
+      if (isFirstLoad) {
+        document.getElementById('rankingTableBody').innerHTML = '<tr><td colspan="5" class="loading-text">Carregando...</td></tr>';
+        document.getElementById('backupTableBody').innerHTML = '<tr><td colspan="6" class="loading-text">Carregando...</td></tr>';
+        document.getElementById('historicoTableBody').innerHTML = '<tr><td colspan="5" class="loading-text">Carregando...</td></tr>';
+      } else {
+        document.getElementById('rankingLoadingTag').classList.remove('hidden');
+        document.getElementById('rankingTable').classList.add('grayed-out-full');
+      }
+
+      try {
+        const resData = await fetch(API_URL);
+        dbData = await resData.json();
+
+        if (currentUser && currentUser.role === 'admin' && currentSessionToken) {
+          const resHist = await fetch(`${API_URL}?action=getHistory&token=${currentSessionToken}`);
+          const dataHist = await resHist.json();
+          if (dataHist.history) {
+            historyData = dataHist.history;
+            renderHistoryTable();
+          }
+        }
+
+        renderRanking();
+        renderBackupTable();
+        renderMatchForm();
+        isFirstLoad = false;
+      } catch (err) {
+        console.error("Erro ao carregar dados:", err);
+      } finally {
+        document.getElementById('rankingLoadingTag').classList.add('hidden');
+        document.getElementById('rankingTable').classList.remove('grayed-out-full');
+
+        document.getElementById('registrarLoadingTag').classList.add('hidden');
+        document.getElementById('sec-registrar').classList.remove('form-disabled');
+
+        document.getElementById('adicionarLoadingTag').classList.add('hidden');
+        document.getElementById('adicionarContainer').classList.remove('form-disabled');
+
+        document.getElementById('backupLoadingTag').classList.add('hidden');
+        document.getElementById('backupContainer').classList.remove('form-disabled');
+
+        document.getElementById('historicoLoadingTag').classList.add('hidden');
+        document.getElementById('historicoContainer').classList.remove('form-disabled');
+
+        refreshTimeout = setTimeout(() => {
+          if (btnRefresh) btnRefresh.style.display = 'flex';
+        }, 10000);
+      }
+    }
+
+    function switchMod(mod) {
+      currentMod = mod;
+      document.querySelectorAll('.tabs-modalidades .tab-btn').forEach(btn => {
+        const matchName = btn.innerText === 'Dominó' ? 'Domino' : btn.innerText;
+        btn.classList.toggle('active', matchName === mod);
+      });
+      
+      const modTitleText = mod === 'Domino' ? 'Dominó' : mod;
+      document.querySelectorAll('.modTitle').forEach(el => el.innerText = modTitleText);
+
+      renderRanking();
+      renderBackupTable();
+      renderMatchForm();
+      renderHistoryTable();
+    }
+
+    function switchSection(sec) {
+      currentSec = sec;
+      
+      document.querySelectorAll('.subtab-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`subtab-${sec}`);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const sections = ['ranking', 'registrar', 'adicionar', 'backup', 'historico'];
+      sections.forEach(s => {
+        const el = document.getElementById(`sec-${s}`);
+        if (el) el.classList.add('hidden');
+      });
+
+      const secToShow = document.getElementById(`sec-${sec}`);
+      if (secToShow) secToShow.classList.remove('hidden');
+    }
+
+    function renderRanking() {
+      let list = (dbData.rankings && dbData.rankings[currentMod]) ? [...dbData.rankings[currentMod]] : [];
+      list.sort((a, b) => b.rating - a.rating);
+
+      const tbody = document.getElementById('rankingTableBody');
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-text">Nenhum jogador cadastrado.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map((p, idx) => {
+        let posDisplay = idx + 1;
+        
+        if (p.partidas > 0) {
+          if (idx === 0) posDisplay = '🥇';
+          else if (idx === 1) posDisplay = '🥈';
+          else if (idx === 2) posDisplay = '🥉';
+        }
+
+        return `
+          <tr class="${p.partidas === 0 ? 'grayed-out' : ''}">
+            <td>${posDisplay}</td>
+            <td>${p.nome}</td>
+            <td><b>${Math.round(p.rating)}</b></td>
+            <td>${p.partidas}</td>
+            <td class="admin-only ${currentUser.role !== 'admin' ? 'hidden' : ''}">
+              <button class="btn-danger" onclick="deletePlayer('${p.id}')">Excluir</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderBackupTable() {
+      let list = (dbData.backups && dbData.backups[currentMod]) ? dbData.backups[currentMod] : [];
+      const tbody = document.getElementById('backupTableBody');
+      
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading-text">Nenhum jogador na lixeira.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map(p => `
+        <tr>
+          <td>${p.nome}</td>
+          <td>${Math.round(p.rating)}</td>
+          <td>${p.partidas}</td>
+          <td>${p.dataExclusao}</td>
+          <td>${p.excluidoPor}</td>
+          <td>
+            <button class="btn-restore" onclick="restorePlayer('${p.id}')">Restaurar</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('historicoTableBody');
+      const modHistory = historyData[currentMod] || [];
+
+      if (!modHistory || modHistory.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-text">Nenhum registro encontrado no histórico.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = modHistory.map(h => `
+        <tr>
+          <td>${h.dataHora}</td>
+          <td>${h.usuario}</td>
+          <td>${h.acao}</td>
+          <td>${h.envolvidos}</td>
+          <td style="font-size:0.82rem; color:#94a3b8;">${h.detalhes}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderMatchForm() {
+      const players = (dbData.rankings && dbData.rankings[currentMod]) ? dbData.rankings[currentMod] : [];
+      const form = document.getElementById('matchForm');
+      
+      if (players.length < 2) {
+        form.innerHTML = "<p class='loading-text'>Cadastre pelo menos 2 jogadores para registrar partidas.</p>";
+        return;
+      }
+
+      let html = '';
+      if (currentMod === 'Xadrez' || currentMod === 'Damas') {
+        html = `<input type="hidden" id="qtdMesa" value="2">
+                <div id="dynamicPlayersContainer"></div>`;
+      } else {
+        let maxJogadores = currentMod === 'Domino' ? Math.min(4, players.length) : Math.min(10, players.length);
+        let defaultQtd = Math.min(currentMod === 'Domino' ? 4 : 3, maxJogadores);
+        if (defaultQtd < 2) defaultQtd = 2;
+
+        html = `
+          <div id="qtdMesaContainer">
+            <label>Quantidade de Jogadores na Mesa (Máx: ${maxJogadores}):</label>
+            <input type="number" id="qtdMesa" value="${defaultQtd}" min="2" max="${maxJogadores}" onchange="updateDynamicPlayersForm()">
+          </div>
+          <div id="dynamicPlayersContainer"></div>
+        `;
+      }
+
+      form.innerHTML = html;
+      updateDynamicPlayersForm();
+    }
+
+    function updateDynamicPlayersForm() {
+      const qtdInput = document.getElementById('qtdMesa');
+      if (!qtdInput) return;
+
+      let qtd = parseInt(qtdInput.value) || 2;
+      const players = dbData.rankings[currentMod] || [];
+      let maxAllowed = (currentMod === 'Domino') ? Math.min(4, players.length) : (currentMod === 'Uno' ? Math.min(10, players.length) : 2);
+
+      if (qtd > maxAllowed) { qtd = maxAllowed; qtdInput.value = qtd; }
+      if (qtd < 2) { qtd = 2; qtdInput.value = qtd; }
+
+      const container = document.getElementById('dynamicPlayersContainer');
+      let html = '';
+
+      for (let i = 0; i < qtd; i++) {
+        let selectedPlayerId = players[i % players.length] ? players[i % players.length].id : '';
+
+        let options = players.map(p => 
+          `<option value="${p.id}" ${p.id === selectedPlayerId ? 'selected' : ''}>${p.nome} (${Math.round(p.rating)})</option>`
+        ).join('');
+
+        let resOptions = '';
+        if (currentMod === 'Uno') {
+          resOptions = `
+            <option value="vitoria" ${i === 0 ? 'selected' : ''}>Vitória</option>
+            <option value="derrota" ${i > 0 ? 'selected' : ''}>Derrota</option>
+          `;
+        } else {
+          resOptions = `
+            <option value="vitoria" ${i === 0 ? 'selected' : ''}>Vitória</option>
+            <option value="derrota" ${i > 0 ? 'selected' : ''}>Derrota</option>
+            <option value="empate">Empate</option>
+          `;
+        }
+
+        let fieldHtml = '';
+        if (currentMod !== 'Xadrez') {
+          let label = '';
+          let minVal = 0;
+          let maxVal = 100;
+          let defaultVal = 0;
+
+          if (currentMod === 'Damas') {
+            label = 'Peças restantes:';
+            maxVal = 12;
+            minVal = (i === 0) ? 1 : 0;
+            defaultVal = (i === 0) ? 1 : 0;
+          } else if (currentMod === 'Uno') {
+            label = 'Cartas restantes:';
+            maxVal = 108 - (qtd - 1);
+            minVal = (i > 0) ? 1 : 0;
+            defaultVal = (i > 0) ? 1 : 0;
+          } else if (currentMod === 'Domino') {
+            label = 'Pontinhos restantes:';
+            minVal = 0;
+            defaultVal = (i === 0) ? 0 : 1;
+            if (qtd === 2) maxVal = 153;
+            else if (qtd === 3) maxVal = 118;
+            else maxVal = 69;
+          }
+
+          fieldHtml = `
+            <label class="lblPecasCartas" style="margin-top:8px; display:block;">${label}</label>
+            <input type="number" class="mPecasCartas" value="${defaultVal}" min="${minVal}" max="${maxVal}">
+          `;
+        }
+
+        html += `
+          <div class="player-card" style="border:1px solid var(--card-border); background: #0b111e; padding:12px; margin-top:10px; border-radius:8px;" data-index="${i}">
+            <label style="font-weight:600; color:var(--muted);">Jogador ${i+1}:</label>
+            <select class="mPlayer" onchange="validatePlayerSelection()">${options}</select>
+            
+            <label style="margin-top:8px; display:block; font-weight:600; color:var(--muted);">Resultado:</label>
+            <select class="mResultado" onchange="handleResultadoChange(${i})">${resOptions}</select>
+
+            ${fieldHtml}
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+      
+      for (let i = 0; i < qtd; i++) {
+        adjustPecasCartasLimits(i);
+      }
+      validatePlayerSelection();
+    }
+
+    function handleResultadoChange(changedIndex) {
+      const resSelects = document.querySelectorAll('.mResultado');
+      const qtd = resSelects.length;
+      const newVal = resSelects[changedIndex].value;
+
+      if (currentMod === 'Xadrez' || currentMod === 'Damas') {
+        const otherIndex = changedIndex === 0 ? 1 : 0;
+        if (newVal === 'vitoria') resSelects[otherIndex].value = 'derrota';
+        else if (newVal === 'derrota') resSelects[otherIndex].value = 'vitoria';
+        else if (newVal === 'empate') resSelects[otherIndex].value = 'empate';
+      } else if (currentMod === 'Uno') {
+        if (newVal === 'vitoria') {
+          resSelects.forEach((sel, idx) => {
+            if (idx !== changedIndex) sel.value = 'derrota';
+          });
+        }
+      } else if (currentMod === 'Domino') {
+        if (newVal === 'vitoria') {
+          resSelects.forEach((sel, idx) => {
+            if (idx !== changedIndex) sel.value = 'derrota';
+          });
+        } else if (newVal === 'empate') {
+          resSelects.forEach((sel) => {
+            if (sel.value === 'vitoria') {
+              sel.value = 'empate';
+            }
+          });
+        }
+      }
+
+      for (let i = 0; i < qtd; i++) {
+        adjustPecasCartasLimits(i);
+      }
+    }
+
+    function adjustPecasCartasLimits(index) {
+      const cards = document.querySelectorAll('.player-card');
+      if (!cards[index]) return;
+      
+      const resSelect = cards[index].querySelector('.mResultado');
+      const inputPecas = cards[index].querySelector('.mPecasCartas');
+      if (!resSelect || !inputPecas) return;
+
+      const res = resSelect.value;
+      const qtd = cards.length;
+
+      if (currentMod === 'Damas') {
+        if (res === 'derrota') {
+          inputPecas.min = 0;
+          inputPecas.max = 0;
+          inputPecas.value = 0;
+          inputPecas.disabled = true;
+        } else {
+          inputPecas.disabled = false;
+          inputPecas.min = 1;
+          inputPecas.max = 12;
+          if (parseInt(inputPecas.value) < 1) inputPecas.value = 1;
+        }
+      } else if (currentMod === 'Uno') {
+        let maxCartas = 108 - (qtd - 1);
+        if (res === 'derrota') {
+          inputPecas.min = 1;
+          inputPecas.max = maxCartas;
+          if (parseInt(inputPecas.value) < 1) inputPecas.value = 1;
+        } else {
+          inputPecas.min = 0;
+          inputPecas.max = 0;
+          inputPecas.value = 0;
+        }
+      } else if (currentMod === 'Domino') {
+        let maxPontinhos = (qtd === 2) ? 153 : (qtd === 3 ? 118 : 69);
+        inputPecas.min = 0;
+        inputPecas.max = maxPontinhos;
+        if (res === 'derrota' && parseInt(inputPecas.value) === 0) {
+          inputPecas.value = 1;
+        }
+      }
+    }
+
+    function validatePlayerSelection() {
+      const pSelects = document.querySelectorAll('.mPlayer');
+      const selectedIds = [];
+      let hasDuplicate = false;
+
+      pSelects.forEach(sel => {
+        if (selectedIds.includes(sel.value)) {
+          hasDuplicate = true;
+          sel.style.borderColor = 'var(--danger)';
+        } else {
+          sel.style.borderColor = 'var(--card-border)';
+          selectedIds.push(sel.value);
+        }
+      });
+
+      return !hasDuplicate;
+    }
+
+    async function addPlayer() {
+      const nomeInput = document.getElementById('newPlayerName');
+      const nome = nomeInput.value.trim();
+      
+      if (!nome) return alert('Digite o nome do jogador!');
+
+      const currentPlayers = (dbData.rankings && dbData.rankings[currentMod]) ? dbData.rankings[currentMod] : [];
+      const nameExists = currentPlayers.some(p => p.nome.trim().toLowerCase() === nome.toLowerCase());
+
+      if (nameExists) {
+        return alert(`Erro: Já existe um jogador cadastrado com o nome "${nome}" na modalidade ${currentMod === 'Domino' ? 'Dominó' : currentMod}.`);
+      }
+
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'addPlayer', modalidade: currentMod, nome: nome, token: currentSessionToken })
+      });
+      const data = await res.json();
+
+      if (data.status === 'error') {
+        return alert(data.message);
+      }
+
+      nomeInput.value = '';
+      loadData();
+    }
+
+    async function deletePlayer(playerId) {
+      if (!confirm("Tem certeza que deseja mover este jogador para o backup?")) return;
+
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'deletePlayer', modalidade: currentMod, playerId: playerId, token: currentSessionToken })
+      });
+      const data = await res.json();
+
+      if (data.status === 'error') {
+        return alert(data.message);
+      }
+
+      loadData();
+    }
+
+    async function restorePlayer(playerId) {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'restorePlayer', modalidade: currentMod, playerId: playerId, token: currentSessionToken })
+      });
+      const data = await res.json();
+
+      if (data.status === 'error') {
+        return alert(data.message);
+      }
+
+      loadData();
+    }
+
+    async function submitMatch() {
+      if (!validatePlayerSelection()) {
+        return alert("Erro: O mesmo jogador não pode ser selecionado mais de uma vez na mesa.");
+      }
+
+      const pSelects = document.querySelectorAll('.mPlayer');
+      const pResultados = document.querySelectorAll('.mResultado');
+      const pPecasCartas = document.querySelectorAll('.mPecasCartas');
+  
+      let empatesCount = 0;
+      let jogadoresArr = [];
+      pSelects.forEach((sel, i) => {
+        const resVal = pResultados[i].value;
+        if (resVal === 'empate') empatesCount++;
+
+        jogadoresArr.push({
+          id: sel.value,
+          resultado: resVal,
+          pecasOuCartas: pPecasCartas[i] ? (parseInt(pPecasCartas[i].value) || 0) : 0
+        });
+      });
+
+      if (currentMod === 'Domino' && empatesCount === 1) {
+        return alert("Erro: Se houve um empate no Dominó, pelo menos duas pessoas na mesa devem ter o resultado Empate.");
+      }
+
+      if ((currentMod === 'Xadrez' || currentMod === 'Damas') && jogadoresArr.length !== 2) {
+        return alert("Xadrez e Damas exigem exatamente 2 jogadores.");
+      }
+
+      const matchSection = document.getElementById('sec-registrar');
+      const submitBtn = document.getElementById('btnSubmitMatch');
+      const originalBtnText = submitBtn.innerText;
+
+      matchSection.classList.add('form-disabled');
+      submitBtn.innerText = "Salvando...";
+      submitBtn.disabled = true;
+
+      let payload = {
+        action: 'recordMatch',
+        modalidade: currentMod,
+        token: currentSessionToken,
+        jogadores: jogadoresArr
+      };
+
+      try {
+        const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const resData = await res.json();
+
+        if (resData.status === 'error') {
+          alert("Erro ao registrar: " + resData.message);
+          return;
+        }
+
+        if (resData.data) {
+          dbData = resData.data;
+        } else {
+          await loadData();
+        }
+
+        renderRanking();
+        renderBackupTable();
+        renderMatchForm();
+
+      } catch (err) {
+        console.error("Erro ao registrar partida:", err);
+        alert("Ocorreu um erro ao salvar a partida.");
+      } finally {
+        matchSection.classList.remove('form-disabled');
+        submitBtn.innerText = originalBtnText;
+        submitBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
