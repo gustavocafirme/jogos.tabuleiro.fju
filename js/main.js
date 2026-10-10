@@ -1,7 +1,13 @@
+/**
+ * Inicializador da janela: verifica se há uma sessão ativa armazenada.
+ */
 window.onload = function() {
   checkSavedSession();
 };
 
+/**
+ * Carrega todos os dados da API (rankings, backups e histórico) e atualiza a interface.
+ */
 async function loadData() {
   const btnRefresh = document.getElementById('btnRefresh');
   if (btnRefresh) btnRefresh.style.display = 'none';
@@ -40,7 +46,7 @@ async function loadData() {
       }
     }
 
-    renderRanking();
+    renderRankingTable();
     renderBackupTable();
     renderMatchForm();
     state.isFirstLoad = false;
@@ -68,8 +74,13 @@ async function loadData() {
   }
 }
 
+/**
+ * Alterna a modalidade de jogo ativa (Xadrez, Damas, Dominó, Uno).
+ */
 function switchMod(mod) {
   state.currentMod = mod;
+  state.modoJogo = 'individual';
+  
   document.querySelectorAll('.tabs-modalidades .tab-btn').forEach(btn => {
     const matchName = btn.innerText === 'Dominó' ? 'Domino' : btn.innerText;
     btn.classList.toggle('active', matchName === mod);
@@ -78,12 +89,15 @@ function switchMod(mod) {
   const modTitleText = mod === 'Domino' ? 'Dominó' : mod;
   document.querySelectorAll('.modTitle').forEach(el => el.innerText = modTitleText);
 
-  renderRanking();
+  renderRankingTable();
   renderBackupTable();
   renderMatchForm();
   renderHistoryTable();
 }
 
+/**
+ * Alterna a aba de seção visível (Ranking, Registrar, Adicionar, Backup, Histórico).
+ */
 function switchSection(sec) {
   state.currentSec = sec;
   
@@ -101,7 +115,11 @@ function switchSection(sec) {
   if (secToShow) secToShow.classList.remove('hidden');
 }
 
+/**
+ * Envia a requisição para adicionar um novo jogador à modalidade ativa.
+ */
 async function addPlayer() {
+  const btnAdd = document.getElementById('btnAddPlayer');
   const nomeInput = document.getElementById('newPlayerName');
   const nome = nomeInput.value.trim();
   
@@ -114,54 +132,129 @@ async function addPlayer() {
     return alert(`Erro: Já existe um jogador cadastrado com o nome "${nome}" na modalidade ${state.currentMod === 'Domino' ? 'Dominó' : state.currentMod}.`);
   }
 
-  const data = await postAction({ action: 'addPlayer', modalidade: state.currentMod, nome: nome, token: state.currentSessionToken });
+  if (btnAdd) {
+    btnAdd.disabled = true;
+    btnAdd.classList.add('form-disabled');
+  }
 
-  if (data.status === 'error') return alert(data.message);
+  try {
+    const data = await postAction({ action: 'addPlayer', modalidade: state.currentMod, nome: nome, token: state.currentSessionToken });
+    if (data.status === 'error') return alert(data.message);
 
-  nomeInput.value = '';
-  loadData();
+    nomeInput.value = '';
+    await loadData();
+  } catch (err) {
+    console.error("Erro ao adicionar jogador:", err);
+    alert("Ocorreu um erro ao salvar o jogador.");
+  } finally {
+    if (btnAdd) {
+      btnAdd.disabled = false;
+      btnAdd.classList.remove('form-disabled');
+    }
+  }
 }
 
-async function deletePlayer(playerId) {
+/**
+ * Envia a requisição para mover um jogador ativo para a lixeira (backup).
+ */
+async function deletePlayer(playerId, btnEl) {
   if (!confirm("Tem certeza que deseja mover este jogador para o backup?")) return;
 
-  const data = await postAction({ action: 'deletePlayer', modalidade: state.currentMod, playerId: playerId, token: state.currentSessionToken });
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.classList.add('form-disabled');
+  }
 
-  if (data.status === 'error') return alert(data.message);
+  try {
+    const data = await postAction({ action: 'deletePlayer', modalidade: state.currentMod, playerId: playerId, token: state.currentSessionToken });
+    if (data.status === 'error') return alert(data.message);
 
-  loadData();
+    await loadData();
+  } catch (err) {
+    console.error("Erro ao excluir jogador:", err);
+    alert("Ocorreu um erro ao mover o jogador.");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.classList.remove('form-disabled');
+    }
+  }
 }
 
-async function restorePlayer(playerId) {
-  const data = await postAction({ action: 'restorePlayer', modalidade: state.currentMod, playerId: playerId, token: state.currentSessionToken });
+/**
+ * Envia a requisição para restaurar um jogador da lixeira de volta ao ranking ativo.
+ */
+async function restorePlayer(playerId, btnEl) {
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.classList.add('form-disabled');
+  }
 
-  if (data.status === 'error') return alert(data.message);
+  try {
+    const data = await postAction({ action: 'restorePlayer', modalidade: state.currentMod, playerId: playerId, token: state.currentSessionToken });
+    if (data.status === 'error') return alert(data.message);
 
-  loadData();
+    await loadData();
+  } catch (err) {
+    console.error("Erro ao restaurar jogador:", err);
+    alert("Ocorreu um erro ao restaurar o jogador.");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.classList.remove('form-disabled');
+    }
+  }
 }
 
+/**
+ * Submete o resultado da partida validando as regras específicas do modo e da modalidade.
+ */
 async function submitMatch() {
   if (!validatePlayerSelection()) return alert("Erro: O mesmo jogador não pode ser selecionado mais de uma vez na mesa.");
 
-  const pSelects = document.querySelectorAll('.mPlayer');
-  const pResultados = document.querySelectorAll('.mResultado');
-  const pPecasCartas = document.querySelectorAll('.mPecasCartas');
-
-  let empatesCount = 0;
   let jogadoresArr = [];
-  pSelects.forEach((sel, i) => {
-    const resVal = pResultados[i].value;
-    if (resVal === 'empate') empatesCount++;
+  let empatesCount = 0;
 
-    jogadoresArr.push({
-      id: sel.value,
-      resultado: resVal,
-      pecasOuCartas: pPecasCartas[i] ? (parseInt(pPecasCartas[i].value) || 0) : 0
+  if (state.modoJogo === 'equipe' && (state.currentMod === 'Domino' || state.currentMod === 'Uno')) {
+    const teamContainers = document.querySelectorAll('.team-container');
+    
+    teamContainers.forEach((container, eqIdx) => {
+      const resVal = container.querySelector('.mTeamResultado').value;
+      const pecasInput = container.querySelector('.mTeamPecasCartas');
+      const teamPecas = pecasInput ? (parseInt(pecasInput.value) || 0) : 0;
+      
+      if (resVal === 'empate') empatesCount++;
+
+      const pSelects = container.querySelectorAll('.mPlayer');
+      pSelects.forEach(sel => {
+        jogadoresArr.push({
+          id: sel.value,
+          resultado: resVal,
+          pecasOuCartas: teamPecas,
+          equipeIndex: eqIdx
+        });
+      });
     });
-  });
 
-  if (state.currentMod === 'Domino' && empatesCount === 1) {
-    return alert("Erro: Se houve um empate no Dominó, pelo menos duas pessoas na mesa devem ter o resultado Empate.");
+  } else {
+    const pSelects = document.querySelectorAll('.mPlayer');
+    const pResultados = document.querySelectorAll('.mResultado');
+    const pPecasCartas = document.querySelectorAll('.mPecasCartas');
+
+    pSelects.forEach((sel, i) => {
+      const resVal = pResultados[i].value;
+      if (resVal === 'empate') empatesCount++;
+
+      jogadoresArr.push({
+        id: sel.value,
+        resultado: resVal,
+        pecasOuCartas: pPecasCartas[i] ? (parseInt(pPecasCartas[i].value) || 0) : 0
+      });
+    });
+  }
+
+  if (empatesCount === 1) {
+    return alert("Erro: Se houve um empate, pelo menos duas pessoas/equipes na mesa devem ter o resultado Empate.");
   }
 
   if ((state.currentMod === 'Xadrez' || state.currentMod === 'Damas') && jogadoresArr.length !== 2) {
@@ -180,6 +273,7 @@ async function submitMatch() {
     const resData = await postAction({
       action: 'recordMatch',
       modalidade: state.currentMod,
+      modoJogo: state.modoJogo,
       token: state.currentSessionToken,
       jogadores: jogadoresArr
     });
@@ -191,11 +285,17 @@ async function submitMatch() {
 
     if (resData.data) {
       state.dbData = resData.data;
-    } else {
-      await loadData();
     }
 
-    renderRanking();
+    if (state.currentUser && state.currentUser.role === 'admin' && state.currentSessionToken) {
+      const dataHist = await fetchHistoryData(state.currentSessionToken);
+      if (dataHist.history) {
+        state.historyData = dataHist.history;
+        renderHistoryTable();
+      }
+    }
+
+    renderRankingTable();
     renderBackupTable();
     renderMatchForm();
 
@@ -209,6 +309,9 @@ async function submitMatch() {
   }
 }
 
+/**
+ * Atalho de teclado para enviar login ao pressionar a tecla Enter.
+ */
 function handleEnter(e) {
   if (e.key === 'Enter') login();
 }

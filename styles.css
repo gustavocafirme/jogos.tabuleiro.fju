@@ -170,3 +170,53 @@ button.btn-restore:hover { background: #15803d; }
 
 .loading-text { color: var(--muted); font-style: italic; text-align: center; padding: 20px; }
 .loading-tag { color: var(--muted); font-weight: normal; font-style: italic; font-size: 0.9rem; }
+
+/* Sub-abas de Modo de Jogo (Individual vs Equipe) */
+.tabs-modo-jogo {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 10px;
+}
+
+.modo-btn {
+  background: #0b111e;
+  border: 1px solid var(--card-border);
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  width: auto;
+}
+
+.modo-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* Cards de Equipe com Backgrounds Coloridos Suaves */
+.team-container {
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.team-title {
+  font-weight: bold;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* Cores das Equipes (FJU Paleta) */
+.team-bg-0 { background: rgba(38, 120, 235, 0.15); border-color: rgba(38, 120, 235, 0.4); }   /* Azul */
+.team-bg-1 { background: rgba(219, 31, 43, 0.15); border-color: rgba(219, 31, 43, 0.4); }    /* Vermelho */
+.team-bg-2 { background: rgba(22, 163, 22, 0.15); border-color: rgba(22, 163, 22, 0.4); }     /* Verde */
+.team-bg-3 { background: rgba(235, 175, 23, 0.15); border-color: rgba(235, 175, 23, 0.4); }  /* Amarelo */
+.team-bg-4 { background: rgba(144, 153, 184, 0.15); border-color: rgba(144, 153, 184, 0.4); } /* Prata */
